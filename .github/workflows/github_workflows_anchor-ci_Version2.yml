@@ -1,0 +1,64 @@
+name: Anchor Program CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+env:
+  CARGO_TERM_COLOR: always
+  ANCHOR_VERSION: 0.29.0
+  NODE_VERSION: 18
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Solana CLI
+        uses: metaplex-foundation/setup-solana@v1
+        with:
+          solana-version: "1.18.14"
+
+      - name: Install Anchor CLI
+        run: |
+          npm install -g @coral-xyz/anchor-cli@${ANCHOR_VERSION}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install yarn
+        run: npm install -g yarn
+
+      - name: Install project dependencies
+        run: yarn install
+
+      - name: Build Anchor program
+        run: anchor build
+
+      - name: Run Rust unit tests (if any)
+        run: cargo test --manifest-path programs/flashloan_arb/Cargo.toml
+
+      - name: Launch local validator for Anchor tests
+        run: |
+          nohup solana-test-validator -r > validator.log 2>&1 &
+          sleep 10
+
+      - name: Run Anchor tests (Rust and TypeScript)
+        run: anchor test
+
+      - name: Upload validator logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validator-logs
+          path: validator.log
